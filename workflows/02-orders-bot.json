@@ -1,0 +1,1046 @@
+{
+  "name": "UPWORK-02 BOT",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {
+          "userIds": "YOUR_TELEGRAM_CHAT_ID"
+        }
+      },
+      "id": "f18efb22-0341-4b25-a36f-ba2552ad9df8",
+      "name": "TELEGRAM UPDATE",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        384
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "take",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.callback_query?.data ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "take:"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "skip",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.callback_query?.data ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "skip:"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "start",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message?.text ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "/"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "translate",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message?.text ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "spec",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.callback_query?.data ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "spec:"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "replied",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.callback_query?.data ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "replied:"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cabdaf92-e6d3-4cfb-90b7-47c86499c95a",
+      "name": "ROUTE",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query.id }}",
+        "additionalFields": {
+          "text": "✍️ Пишу отклик, 20–60 секунд…"
+        }
+      },
+      "id": "0ab58619-3402-4ff6-a293-8e596ebdcf0c",
+      "name": "ACK TAKE",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_jobs SET status = 'taken' WHERE id = $1::int RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$('TELEGRAM UPDATE').item.json.callback_query.data.split(':')[1]] }}"
+        }
+      },
+      "id": "756c391c-22a3-4200-9d7a-8e573385ba1e",
+      "name": "MARK TAKEN",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        800,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "# ROLE\nYou write Upwork proposals (cover letters) for a freelancer. The freelancer does NOT know English, so you also give an exact Russian translation and explain everything in Russian.\n\n# FREELANCER\nFull-stack developer and automation engineer: n8n / Make / Zapier automations, AI integrations (OpenAI GPT, Claude, image/video generation, AI agents, chatbots), Telegram bots, trading bots and exchange APIs (Bybit), scraping and data pipelines, REST APIs, Node.js / Python backends, PostgreSQL, websites and web apps, social media content automation. Communicates in written English only (no calls).\n\n# PORTFOLIO (real projects — names exactly as in the freelancer's Upwork portfolio)\n1. \"AI Sales Assistant for an Instagram Shop\" — n8n + GPT-4o agent answers Instagram DMs (Russian/Tajik), recommends products by size/age, recognizes products from customer photos and Reels, collects orders step by step and sends them to Telegram. 81-node workflow, Postgres memory, duplicate-webhook protection, monitoring alerts, 48/48 routing tests.\n2. \"Automated YouTube Shorts & TikTok Content Pipeline\" — n8n: GPT-5 writes fact-checked scripts, AI images, video rendering, auto-publishing to YouTube and TikTok via official API, daily stats learning loop, self-healing error workflow with Telegram alerts.\n3. \"AI Product Video Generator\" — product photo from Telegram → AI model try-on photo (fashn.ai) → GPT video prompt → 9:16 Reel (Runway), saved to Postgres.\n4. \"StickEra Live — AI Host for TikTok LIVE\" — Node.js + Claude + ElevenLabs: reads live chat, greets viewers, thanks for gifts, tells stories; operator control panel; OBS overlay.\n5. \"Crypto Trading Bot for Bybit\" — Python, CCXT, technical indicators + XGBoost signals, backtester, risk management, Telegram control, paper-trading mode. (Never claim profits.)\n6. \"Upwork Job Assistant (n8n + Telegram + Claude Code)\" — reads job alerts, AI scoring and translation, proposal drafts, task queue, AI coding agent builds projects with automatic tests and AI review, delivers zip to Telegram.\n\n# RULES FOR THE PROPOSAL\n- 90-160 words, plain simple English, no fluff, no \"Dear Sir/Madam\", no emojis.\n- First line: show you understood THEIR problem (reference a concrete detail from the job).\n- Then: short concrete plan in 2-4 steps / bullets, which tools you will use.\n- If 1 (max 2) portfolio projects are genuinely similar to the job, mention them in one sentence by exact name with the most relevant detail, e.g. \"I recently built a similar system — see \\\"AI Sales Assistant for an Instagram Shop\\\" in my portfolio.\" If nothing is really similar, do not mention the portfolio.\n- Then: 1-2 smart clarifying questions.\n- End with a short call to action (e.g. offer a quick plan or demo). Prefer chat over calls.\n- NEVER invent clients, numbers, reviews, years of experience or links beyond the portfolio facts above. Do not promise things that are not in the job. Do not suggest contact or payment outside Upwork.\n\n# OUTPUT (only JSON)\n{\n  \"proposal_en\": \"the proposal text in English\",\n  \"proposal_ru\": \"точный перевод отклика на русский\",\n  \"portfolio_used_ru\": \"какие проекты из портфолио упомянуты и почему, или пусто\",\n  \"plan_ru\": \"как выполнить заказ: 3-6 шагов по-русски, технологии\",\n  \"price_ru\": \"какую цену/ставку предложить и почему (с учётом бюджета клиента)\",\n  \"time_ru\": \"реальный срок выполнения\",\n  \"difficulty_ru\": \"сложность: лёгкий / средний / сложный и что может пойти не так\"\n}"
+            },
+            {
+              "content": "=JOB TITLE: {{ $json.title }}\nBUDGET: {{ $json.budget }}\nCLIENT: {{ $json.client }}\nSKILLS: {{ $json.skills }}\n\nJOB DESCRIPTION:\n{{ $json.description }}\n\nWrite the proposal and return only JSON."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "id": "cb2b9980-3e2e-4370-b568-f1aca9ae47ec",
+      "name": "WRITE PROPOSAL",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Готовит два сообщения: английский отклик для копирования и русское объяснение\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n// Ответ может прийти строкой JSON или уже разобранным объектом\nconst getRaw = (j) => {\n  if (j.text !== undefined) return j.text;\n  for (const o of (j.output || [])) for (const c of (o.content || [])) if (c.text !== undefined) return c.text;\n  return '';\n};\nconst raw = getRaw($json);\nlet d;\ntry { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { d = { proposal_en: String(raw), proposal_ru: '(не удалось разобрать ответ ИИ)' }; }\nconst job = $('MARK TAKEN').item.json;\nconst msg1 = '🇬🇧 <b>Отклик для Upwork</b> — нажмите на текст, он скопируется:\\n\\n<pre>' + esc(d.proposal_en).slice(0, 3700) + '</pre>';\nconst msg2 = [\n  '📌 <b>' + esc(job.title_ru || job.title) + '</b>',\n  '🇷🇺 <b>Перевод отклика:</b>\\n' + esc(d.proposal_ru),\n  d.portfolio_used_ru ? '🗂 <b>Портфолио в отклике:</b> ' + esc(d.portfolio_used_ru) + '\\nПри отклике на Upwork можно прикрепить этот проект из портфолио.' : '',\n  d.plan_ru ? '🛠 <b>Как делать:</b>\\n' + esc(d.plan_ru) : '',\n  d.price_ru ? '💰 <b>Цена:</b> ' + esc(d.price_ru) : '',\n  d.time_ru ? '⏱ <b>Срок:</b> ' + esc(d.time_ru) : '',\n  d.difficulty_ru ? '📊 <b>Сложность:</b> ' + esc(d.difficulty_ru) : '',\n  '👉 Откройте заказ, нажмите <b>Apply now</b>, вставьте отклик и укажите цену. Отправляете вы сами.',\n].filter(Boolean).join('\\n\\n').slice(0, 4000);\nreturn { json: { id: job.id, url: /^https?:\\/\\//.test(job.url || '') ? job.url : 'https://www.upwork.com/nx/find-work/', proposal_en: d.proposal_en || '', proposal_ru: d.proposal_ru || '', plan_ru: d.plan_ru || '', msg1, msg2 } };"
+      },
+      "id": "b7a7495b-c833-4ad5-9b5e-3100ba5bb987",
+      "name": "FORMAT PROPOSAL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_jobs SET proposal = r.proposal_en, proposal_ru = r.proposal_ru, plan_ru = r.plan_ru\nFROM json_to_record($1::json) AS r(id int, proposal_en text, proposal_ru text, plan_ru text)\nWHERE upwork_jobs.id = r.id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ id: $json.id, proposal_en: $json.proposal_en, proposal_ru: $json.proposal_ru, plan_ru: $json.plan_ru })] }}"
+        }
+      },
+      "id": "f9b23daa-599b-4c71-8131-4682d0d0872a",
+      "name": "SAVE PROPOSAL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1600,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('FORMAT PROPOSAL').item.json.msg1 }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "bd865338-2cf4-4747-b20b-73004441163f",
+      "name": "SEND PROPOSAL EN",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('FORMAT PROPOSAL').item.json.msg2 }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔗 Открыть заказ и откликнуться",
+                    "additionalFields": {
+                      "url": "={{ $('FORMAT PROPOSAL').item.json.url }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "5bbdf690-b43d-4f38-94bd-2507d215541f",
+      "name": "SEND EXPLANATION RU",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2048,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query.id }}",
+        "additionalFields": {
+          "text": "Пропущено 👌"
+        }
+      },
+      "id": "7b676752-3bc6-456e-bd10-1e4470ec765a",
+      "name": "ACK SKIP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        192
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_jobs SET status = 'skipped' WHERE id = $1::int;",
+        "options": {
+          "queryReplacement": "={{ [$('TELEGRAM UPDATE').item.json.callback_query.data.split(':')[1]] }}"
+        }
+      },
+      "id": "cd53af99-f2ae-4a08-a43f-1387e013db69",
+      "name": "MARK SKIPPED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1088,
+        192
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "👋 Я ваш помощник по Upwork.\n\n🆕 Сам присылаю подходящие заказы (уже переведённые на русский) с кнопками:\n✅ Беру — пишу отклик на английском + перевод, план, цену и срок\n❌ Пропустить\n\n🔁 Переводчик: просто напишите мне любой текст.\n• По-русски → дам готовый английский текст для клиента\n• По-английски (сообщение клиента) → переведу на русский\n\n⚠️ Отклики и сообщения клиентам на Upwork отправляете вы сами — так аккаунт в безопасности.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "9effefef-ebc4-4eff-a2de-17a29697eda9",
+      "name": "SEND HELP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        384
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "# ROLE\nYou are a translator for a Russian-speaking freelancer who talks to Upwork clients in English.\n- If the input is mainly Russian (or other non-English): translate it into natural, polite, professional but simple English, as a message to a client. Keep meaning exact, do not add promises. Also give back_ru: a literal translation of your English text back to Russian so the freelancer can check it.\n- If the input is mainly English (a message from a client): translate it into Russian. In note_ru briefly explain what the client wants and suggest what to answer (in Russian).\n\n# OUTPUT (only JSON)\n{ \"direction\": \"ru2en | en2ru\", \"translation\": \"...\", \"back_ru\": \"... or empty\", \"note_ru\": \"... or empty\" }"
+            },
+            {
+              "content": "={{ $json.message.text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object",
+              "verbosity": "low"
+            }
+          }
+        }
+      },
+      "id": "97a3ae57-724e-4c6b-b9fb-3b6ddf44d775",
+      "name": "TRANSLATE",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        576
+      ],
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Ответ переводчика в Telegram (HTML)\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n// Ответ может прийти строкой JSON или уже разобранным объектом\nconst getRaw = (j) => {\n  if (j.text !== undefined) return j.text;\n  for (const o of (j.output || [])) for (const c of (o.content || [])) if (c.text !== undefined) return c.text;\n  return '';\n};\nconst raw = getRaw($json);\nlet d;\ntry { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { d = { direction: 'en2ru', translation: String(raw) }; }\nlet text;\nif (d.direction === 'ru2en') {\n  text = '🇬🇧 <b>Для клиента</b> — нажмите, чтобы скопировать:\\n\\n<pre>' + esc(d.translation) + '</pre>' + (d.back_ru ? '\\n\\n🔁 <b>Проверка (обратный перевод):</b>\\n' + esc(d.back_ru) : '');\n} else {\n  text = '🇷🇺 <b>Перевод:</b>\\n' + esc(d.translation) + (d.note_ru ? '\\n\\n💡 ' + esc(d.note_ru) : '');\n}\nreturn { json: { text: text.slice(0, 4000) } };"
+      },
+      "id": "a4464264-b8a1-4082-a10f-ae1100898f37",
+      "name": "FORMAT TRANSLATION",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML",
+          "reply_to_message_id": "={{ $('TELEGRAM UPDATE').item.json.message.message_id }}"
+        }
+      },
+      "id": "deb618f3-6af2-4073-8a09-62a07fa939fa",
+      "name": "SEND TRANSLATION",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        576
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## UPWORK-02 BOT\nБот «Заказы Upwork»: кнопки из карточек UPWORK-01.\n✅ Беру → GPT-5 пишет отклик на английском + русский перевод, план, цену, срок.\n❌ Пропустить → отмечает в базе.\nЛюбой текст → переводчик RU↔EN.\nОтвечает только владельцу (user YOUR_TELEGRAM_CHAT_ID).",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      },
+      "id": "04137bdb-0525-49e8-a0f8-9e86d803c577",
+      "name": "Sticky Note 80d2b320",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query.id }}",
+        "additionalFields": {
+          "text": "🚀 Составляю ТЗ и ставлю в работу…"
+        }
+      },
+      "id": "bcf95f21-acfd-4281-abb8-ef5a2d8aea05",
+      "name": "ACK SPEC",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        512,
+        768
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH mark AS (UPDATE upwork_messages SET replied = true WHERE id = $1::int RETURNING id)\nSELECT m.id, m.client, m.job_title, m.text, m.text_ru, m.meaning_ru,\n  j.title AS job_title_full, j.description, j.budget, j.proposal\nFROM upwork_messages m\nLEFT JOIN LATERAL (\n  SELECT * FROM upwork_jobs uj\n  WHERE m.job_title <> '' AND (lower(uj.title) = lower(m.job_title) OR lower(uj.title) LIKE '%' || lower(m.job_title) || '%')\n  ORDER BY uj.created_at DESC LIMIT 1\n) j ON true\nWHERE m.id = $1::int;",
+        "options": {
+          "queryReplacement": "={{ [$('TELEGRAM UPDATE').item.json.callback_query.data.split(':')[1]] }}"
+        }
+      },
+      "id": "acefd67c-84f6-4b7c-92c8-a06111632642",
+      "name": "GET MESSAGE + JOB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        800,
+        768
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "# ROLE\nYou are a senior tech lead helping a Russian-speaking freelancer (does not know English) deliver an Upwork job. From the job description and the client's latest message, write a clear technical specification in Russian, and a ready prompt for Claude Code (an AI coding agent) that will build the project on the freelancer's computer.\n\n# RULES\n- Only include what the client actually asked for. Mark assumptions clearly as «Допущение».\n- If something important is unknown (access, API keys, data, design, deadline), put it into questions.\n- Questions to the client: short, simple English, plus Russian translation.\n- claude_prompt_ru: in Russian, complete and self-contained: goal, features, stack, inputs/outputs, what \"done\" means, and ask Claude Code to create the project in a new folder, test it, and write a short README in English for the client. Never include secrets.\n\n# OUTPUT (only JSON)\n{\n  \"summary_ru\": \"суть задачи в 2-3 предложениях\",\n  \"requirements_ru\": \"список требований, каждое с новой строки с •\",\n  \"deliverables_ru\": \"что сдать клиенту\",\n  \"stack_ru\": \"технологии\",\n  \"steps_ru\": \"план работы по шагам\",\n  \"questions_en\": \"questions to the client, each on new line\",\n  \"questions_ru\": \"перевод вопросов\",\n  \"claude_prompt_ru\": \"готовый промпт для Claude Code\"\n}"
+            },
+            {
+              "content": "=JOB: {{ $json.job_title_full || $json.job_title }}\nBUDGET: {{ $json.budget || 'unknown' }}\nJOB DESCRIPTION:\n{{ $json.description || '(not found — rely on the message)' }}\n\nOUR PROPOSAL:\n{{ $json.proposal || '(none)' }}\n\nCLIENT ({{ $json.client }}) LATEST MESSAGE:\n{{ $json.text }}\n\nReturn only JSON."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "id": "512c2b9a-4a2e-4cc8-ae33-f064e6dbc8d7",
+      "name": "WRITE SPEC",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1024,
+        768
+      ],
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ТЗ по-русски + задание для Claude Code (уходит в очередь помощника)\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst getRaw = (j) => {\n  if (j.text !== undefined) return j.text;\n  for (const o of (j.output || [])) for (const c of (o.content || [])) if (c.text !== undefined) return c.text;\n  return '';\n};\nconst raw = getRaw($json);\nlet d;\ntry { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { d = { summary_ru: String(raw) }; }\nconst m = $('GET MESSAGE + JOB').item.json;\nconst title = String(m.job_title_full || m.job_title || ('Заказ от ' + (m.client || 'клиента'))).slice(0, 200);\nconst msg1 = [\n  '🛠 <b>ТЗ: ' + esc(title) + '</b>',\n  '📌 ' + esc(d.summary_ru),\n  d.requirements_ru ? '<b>Требования:</b>\\n' + esc(d.requirements_ru) : '',\n  d.deliverables_ru ? '<b>Что сдать:</b>\\n' + esc(d.deliverables_ru) : '',\n  d.stack_ru ? '<b>Технологии:</b> ' + esc(d.stack_ru) : '',\n  d.questions_en ? '❓ <b>Вопросы клиенту</b> (нажмите, чтобы скопировать):\\n<pre>' + esc(d.questions_en) + '</pre>\\n🔁 ' + esc(d.questions_ru) : '',\n].filter(Boolean).join('\\n\\n').slice(0, 4000);\nconst prompt = [\n  '# ЗАДАЧА: ' + title,\n  d.claude_prompt_ru || '',\n  '',\n  '# ТРЕБОВАНИЯ',\n  d.requirements_ru || '',\n  '',\n  '# ЧТО СДАТЬ',\n  d.deliverables_ru || '',\n  '',\n  '# ТЕХНОЛОГИИ',\n  d.stack_ru || '',\n].join('\\n');\nreturn { json: { id: m.id, title, prompt, spec: JSON.stringify(d), msg1 } };"
+      },
+      "id": "8690a89c-7458-410f-95f5-ef731300edb1",
+      "name": "FORMAT SPEC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_messages SET spec_ru = r.spec FROM json_to_record($1::json) AS r(id int, spec text) WHERE upwork_messages.id = r.id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ id: $json.id, spec: $json.spec })] }}"
+        }
+      },
+      "id": "5cb1f93c-32b1-450b-966f-2cbe5c6d20f8",
+      "name": "SAVE SPEC",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1600,
+        768
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('FORMAT SPEC').item.json.msg1 }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4ac574c-ecfb-4c61-ae53-a3466b49966c",
+      "name": "SEND SPEC",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        768
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upwork_tasks (message_id, title, prompt)\nSELECT r.message_id, r.title, r.prompt FROM json_to_record($1::json) AS r(message_id int, title text, prompt text)\nRETURNING id, title;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ message_id: $('FORMAT SPEC').item.json.id, title: $('FORMAT SPEC').item.json.title, prompt: $('FORMAT SPEC').item.json.prompt })] }}"
+        }
+      },
+      "id": "909a5579-e849-43f1-8af7-62bdb75e4e87",
+      "name": "QUEUE TASK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2048,
+        768
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🚀 Задача #{{ $json.id }} поставлена в работу: {{ $json.title }}\n\nПомощник на компьютере возьмёт её в течение минуты (компьютер должен быть включён).\n⚙️ → Claude строит проект и прогоняет 2–4 теста\n✅ → пришлю «Работа окончена» с архивом",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "4690c283-aae4-4c54-ba53-35c5425d61b0",
+      "name": "SEND QUEUED",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2272,
+        768
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "deleteMessage",
+        "chatId": "={{ $('TELEGRAM UPDATE').item.json.callback_query.message.chat.id }}",
+        "messageId": "={{ $('TELEGRAM UPDATE').item.json.callback_query.message.message_id }}"
+      },
+      "id": "eac9e589-3d43-465b-bb88-4a885f2df488",
+      "name": "DELETE JOB CARD",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        800,
+        192
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "id": "08eb1163-1cd4-46e7-b4ad-81e189c20966",
+      "name": "ACK REPLIED",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        1000
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json.callback_query.id }}",
+        "additionalFields": {
+          "text": "👍 Отлично, напоминать не буду"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "id": "ec020eb9-b38c-46dc-a7da-033aebc667e8",
+      "name": "MARK REPLIED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        700,
+        1000
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_messages SET replied = true WHERE id = $1::int;",
+        "options": {
+          "queryReplacement": "={{ [$('TELEGRAM UPDATE').item.json.callback_query.data.split(':')[1]] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "TELEGRAM UPDATE": {
+      "main": [
+        [
+          {
+            "node": "ROUTE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ROUTE": {
+      "main": [
+        [
+          {
+            "node": "ACK TAKE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ACK SKIP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SEND HELP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "TRANSLATE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ACK SPEC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ACK REPLIED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "ACK TAKE": {
+      "main": [
+        [
+          {
+            "node": "MARK TAKEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MARK TAKEN": {
+      "main": [
+        [
+          {
+            "node": "WRITE PROPOSAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WRITE PROPOSAL": {
+      "main": [
+        [
+          {
+            "node": "FORMAT PROPOSAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT PROPOSAL": {
+      "main": [
+        [
+          {
+            "node": "SAVE PROPOSAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE PROPOSAL": {
+      "main": [
+        [
+          {
+            "node": "SEND PROPOSAL EN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEND PROPOSAL EN": {
+      "main": [
+        [
+          {
+            "node": "SEND EXPLANATION RU",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRANSLATE": {
+      "main": [
+        [
+          {
+            "node": "FORMAT TRANSLATION",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT TRANSLATION": {
+      "main": [
+        [
+          {
+            "node": "SEND TRANSLATION",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACK SPEC": {
+      "main": [
+        [
+          {
+            "node": "GET MESSAGE + JOB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET MESSAGE + JOB": {
+      "main": [
+        [
+          {
+            "node": "WRITE SPEC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WRITE SPEC": {
+      "main": [
+        [
+          {
+            "node": "FORMAT SPEC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT SPEC": {
+      "main": [
+        [
+          {
+            "node": "SAVE SPEC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAVE SPEC": {
+      "main": [
+        [
+          {
+            "node": "SEND SPEC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEND SPEC": {
+      "main": [
+        [
+          {
+            "node": "QUEUE TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QUEUE TASK": {
+      "main": [
+        [
+          {
+            "node": "SEND QUEUED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACK SKIP": {
+      "main": [
+        [
+          {
+            "node": "DELETE JOB CARD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DELETE JOB CARD": {
+      "main": [
+        [
+          {
+            "node": "MARK SKIPPED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACK REPLIED": {
+      "main": [
+        [
+          {
+            "node": "MARK REPLIED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

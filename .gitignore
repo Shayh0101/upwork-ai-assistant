@@ -1,0 +1,5 @@
+worker/config.json
+worker/worker.log
+node_modules/
+.env
+*.zip

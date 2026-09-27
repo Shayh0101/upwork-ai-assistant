@@ -1,0 +1,347 @@
+{
+  "name": "UPWORK-06 REMINDERS & STATS",
+  "nodes": [
+    {
+      "id": "613fd207-11fd-4e40-bf8a-645965a77eb7",
+      "name": "EVERY 30 MIN (8-23)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */30 8-22 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "4fc1b307-ef0c-40cb-8eb6-8d896ca905c4",
+      "name": "ENSURE REMINDER COLUMNS",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ALTER TABLE upwork_messages ADD COLUMN IF NOT EXISTS replied BOOLEAN DEFAULT false;\nALTER TABLE upwork_messages ADD COLUMN IF NOT EXISTS reminded BOOLEAN DEFAULT false;",
+        "options": {}
+      },
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "1c6d58db-f319-4e83-baad-6e1367278ca8",
+      "name": "CLIENTS WAITING 2H+",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_messages SET reminded = true\nWHERE replied = false AND reminded = false AND kind = 'message'\n  AND created_at < now() - interval '2 hours'\n  AND created_at > now() - interval '3 days'\nRETURNING id, client, job_title, text_ru, created_at;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "67a8cf69-4a2b-4f77-9ae8-84d8fbeafa21",
+      "name": "HAS REMINDER",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3859ea8d-bc29-46b2-ba6a-df2b1cdede82",
+      "name": "SEND REMINDER",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ (() => { const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); const h = Math.max(2, Math.round((Date.now() - new Date($json.created_at).getTime()) / 3600000)); return '⏰ <b>Клиент ждёт ответа уже ' + h + ' ч</b>' + ($json.client ? ' — ' + esc($json.client) : '') + ($json.job_title ? '\\n<i>' + esc($json.job_title) + '</i>' : '') + '\\n\\n💬 ' + esc(String($json.text_ru || '').slice(0, 500)) + '\\n\\nБыстрый ответ сильно повышает шанс получить заказ. Ответьте в чате Upwork и нажмите «Я ответил».'; })() }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Я ответил",
+                    "additionalFields": {
+                      "callback_data": "=replied:{{ $json.id }}"
+                    }
+                  },
+                  {
+                    "text": "🚀 Согласен — начать работу",
+                    "additionalFields": {
+                      "callback_data": "=spec:{{ $json.id }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔗 Открыть чат Upwork",
+                    "additionalFields": {
+                      "url": "https://www.upwork.com/ab/messages/"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Orders Bot"
+        }
+      }
+    },
+    {
+      "id": "e3c459a0-8a5a-440a-b2ca-cc4424c0cebf",
+      "name": "SUNDAY 19:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                0
+              ],
+              "triggerAtHour": 19,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dcbc9636-5775-44cf-9f91-42da782b98dd",
+      "name": "WEEK NUMBERS",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH w AS (SELECT now() - interval '7 days' AS since)\nSELECT\n  (SELECT count(*) FROM upwork_jobs, w WHERE created_at > since) AS jobs_new,\n  (SELECT count(*) FROM upwork_jobs, w WHERE created_at > since AND score >= 6) AS jobs_good,\n  (SELECT count(*) FROM upwork_jobs, w WHERE created_at > since AND status = 'taken') AS jobs_taken,\n  (SELECT count(*) FROM upwork_jobs, w WHERE created_at > since AND status = 'skipped') AS jobs_skipped,\n  (SELECT count(*) FROM upwork_messages, w WHERE created_at > since AND kind = 'message') AS msgs,\n  (SELECT count(DISTINCT client) FROM upwork_messages, w WHERE created_at > since AND kind = 'message') AS clients,\n  (SELECT count(*) FROM upwork_messages, w WHERE created_at > since AND kind = 'offer') AS offers,\n  (SELECT count(*) FROM upwork_tasks, w WHERE finished_at > since AND status = 'done' AND revision_of IS NULL) AS projects_done,\n  (SELECT count(*) FROM upwork_tasks, w WHERE finished_at > since AND revision_of IS NOT NULL) AS revisions,\n  (SELECT round(avg(review_score), 1) FROM upwork_tasks, w WHERE finished_at > since AND review_score IS NOT NULL) AS avg_review,\n  (SELECT string_agg(skills, ',') FROM upwork_jobs, w WHERE created_at > since AND status = 'taken') AS taken_skills,\n  (SELECT string_agg(skills, ',') FROM upwork_jobs, w WHERE created_at > since AND score >= 6) AS good_skills;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "71d8d8bc-a3d4-4618-9457-404da0f75437",
+      "name": "FORMAT WEEK REPORT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Недельная статистика по Upwork (HTML для Telegram)\nconst s = $json;\nconst n = (v) => Number(v || 0);\nconst topSkills = (str) => {\n  const counts = {};\n  String(str || '').split(',').map((x) => x.trim()).filter((x) => x && !/^\\+\\d+ more$/i.test(x)).forEach((x) => { counts[x] = (counts[x] || 0) + 1; });\n  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, c]) => k + ' (' + c + ')').join(', ');\n};\nconst replyRate = n(s.jobs_taken) ? Math.round((n(s.clients) / n(s.jobs_taken)) * 100) : 0;\nconst tips = [];\nif (n(s.jobs_taken) < 5) tips.push('Откликайтесь чаще: 10–15 откликов в неделю — нормальный темп для нового профиля.');\nif (n(s.jobs_taken) >= 5 && replyRate < 15) tips.push('Мало ответов на отклики — стоит усилить портфолио и первую строку отклика.');\nif (n(s.jobs_skipped) > n(s.jobs_taken) * 3) tips.push('Много пропусков — могу поднять порог оценки, чтобы приходило меньше лишнего.');\nif (s.avg_review && n(s.avg_review) < 7) tips.push('Средняя оценка проверки ниже 7 — внимательнее смотрите проекты перед сдачей.');\nconst lines = [\n  '📊 <b>Итоги недели на Upwork</b>',\n  '📩 Заказов пришло: <b>' + n(s.jobs_new) + '</b> (подходящих ≥6: ' + n(s.jobs_good) + ')',\n  '✅ Взяли (отклик): <b>' + n(s.jobs_taken) + '</b>   ❌ Пропустили: ' + n(s.jobs_skipped),\n  '💬 Сообщений от клиентов: <b>' + n(s.msgs) + '</b> (клиентов: ' + n(s.clients) + (n(s.jobs_taken) ? ', ≈' + replyRate + '% от откликов' : '') + ')',\n  '🎉 Офферов / контрактов: <b>' + n(s.offers) + '</b>',\n  '🛠 Проектов сделано: <b>' + n(s.projects_done) + '</b>, доработок: ' + n(s.revisions) + (s.avg_review ? ', средняя проверка ' + s.avg_review + '/10' : ''),\n  topSkills(s.good_skills) ? '🔥 Чаще всего в хороших заказах: ' + topSkills(s.good_skills) : '',\n  topSkills(s.taken_skills) ? '🎯 Вы берёте: ' + topSkills(s.taken_skills) : '',\n  tips.length ? '💡 <b>Советы:</b>\\n• ' + tips.join('\\n• ') : '💡 Отличная неделя, так держать!',\n];\nreturn { json: { text: lines.filter(Boolean).join('\\n\\n') } };"
+      }
+    },
+    {
+      "id": "9d1f8a28-0daa-45b5-869e-055b9182552c",
+      "name": "SEND WEEK REPORT",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "0a3a66a6-3671-4f54-be36-7466f1417848",
+      "name": "Sticky Note 3265cd02",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -50
+      ],
+      "parameters": {
+        "content": "## UPWORK-06 REMINDERS & STATS\n• Каждые 30 мин (8:00–23:00): если клиент ждёт ответа 2+ часа — одно напоминание в «Заказы Upwork».\n• Воскресенье 19:00: итоги недели в бот отчётов.\nЧасовой пояс workflow: Asia/Tashkent (UTC+5).",
+        "color": 4,
+        "width": 300,
+        "height": 600
+      }
+    }
+  ],
+  "connections": {
+    "EVERY 30 MIN (8-23)": {
+      "main": [
+        [
+          {
+            "node": "ENSURE REMINDER COLUMNS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ENSURE REMINDER COLUMNS": {
+      "main": [
+        [
+          {
+            "node": "CLIENTS WAITING 2H+",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CLIENTS WAITING 2H+": {
+      "main": [
+        [
+          {
+            "node": "HAS REMINDER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HAS REMINDER": {
+      "main": [
+        [
+          {
+            "node": "SEND REMINDER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SUNDAY 19:00": {
+      "main": [
+        [
+          {
+            "node": "WEEK NUMBERS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WEEK NUMBERS": {
+      "main": [
+        [
+          {
+            "node": "FORMAT WEEK REPORT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT WEEK REPORT": {
+      "main": [
+        [
+          {
+            "node": "SEND WEEK REPORT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tashkent"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

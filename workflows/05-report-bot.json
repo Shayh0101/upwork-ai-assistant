@@ -1,0 +1,324 @@
+{
+  "name": "UPWORK-05 REPORT BOT",
+  "nodes": [
+    {
+      "id": "f18c9e89-489e-4d2f-a9c6-77f37622a25b",
+      "name": "REPORT BOT UPDATE",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {
+          "userIds": "YOUR_TELEGRAM_CHAT_ID"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "4af4279f-642a-4945-9e49-6934bf1f5174",
+      "name": "ROUTE REPORT",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "revise",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.callback_query?.data ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    },
+                    "rightValue": "revise:"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "revision_text",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message?.reply_to_message?.text ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "rightValue": "Доработка задачи #"
+                  },
+                  {
+                    "leftValue": "={{ $json.message?.text ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "other_text",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message?.text ?? \"\" }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8025feec-065c-4a65-b170-c43ad189737d",
+      "name": "ACK REVISE",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        100
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json.callback_query.id }}",
+        "additionalFields": {
+          "text": "✏️ Напишите, что изменить"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "723456ae-73b9-4dce-bfab-633ca11321ba",
+      "name": "ASK WHAT TO CHANGE",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        100
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✏️ Доработка задачи #{{ $('REPORT BOT UPDATE').item.json.callback_query.data.split(':')[1] }}\n\nОтветьте на ЭТО сообщение и напишите, что изменить.\nМожно по-русски или просто вставить сообщение клиента на английском.",
+        "replyMarkup": "forceReply",
+        "forceReply": {
+          "force_reply": true
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "053a7f0d-c7b1-48a7-a96b-073fb339da1c",
+      "name": "QUEUE REVISION",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upwork_tasks (title, prompt, revision_of)\nSELECT 'Доработка: ' || regexp_replace(coalesce(p.title, ''), '^(Доработка: )+', ''), r.text, p.id\nFROM json_to_record($1::json) AS r(parent int, text text)\nJOIN upwork_tasks p ON p.id = r.parent\nRETURNING id, title;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ parent: Number(($json.message.reply_to_message.text.match(/Доработка задачи #(\\d+)/) || [])[1] || 0), text: $json.message.text })] }}"
+        }
+      },
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "1bcd7783-a06c-4b17-9c34-a4f714e3fb33",
+      "name": "SEND REVISION QUEUED",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.id ? '🚀 Доработка #' + $json.id + ' поставлена в очередь: ' + $json.title + '\\n\\nClaude изменит тот же проект, прогонит тесты и пришлёт новый архив.' : '❌ Не нашёл исходную задачу. Нажмите 🔁 Доработать под нужным результатом ещё раз.' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "reply_to_message_id": "={{ $('REPORT BOT UPDATE').item.json.message.message_id }}"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "e1af9f94-4528-4893-a4f4-8afd107a7e42",
+      "name": "SEND HELP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        500
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "📊 Это бот отчётов по работе.\n\nСюда приходят:\n⚙️ «Claude начал работу»\n✅ «Работа окончена» — тесты, проверка вторым ИИ, архив проекта\n🔁 Кнопка «Доработать» — чтобы внести правки\n\nЗаказы, отклики, сообщения клиентов и переводчик — в боте «Заказы Upwork».",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "id": "36300cb3-8c9d-4f63-84ae-63e044dd716d",
+      "name": "Sticky Note a5947c21",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        250
+      ],
+      "parameters": {
+        "content": "## UPWORK-05 REPORT BOT\nБот «Отчет бота работы Upwork»: отчёты о работе приходят сюда (их шлёт UPWORK-03).\nКнопка 🔁 Доработать → ответ текстом → новая задача-доработка в очереди upwork_tasks.",
+        "color": 4,
+        "width": 300,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "REPORT BOT UPDATE": {
+      "main": [
+        [
+          {
+            "node": "ROUTE REPORT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ROUTE REPORT": {
+      "main": [
+        [
+          {
+            "node": "ACK REVISE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "QUEUE REVISION",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SEND HELP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACK REVISE": {
+      "main": [
+        [
+          {
+            "node": "ASK WHAT TO CHANGE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QUEUE REVISION": {
+      "main": [
+        [
+          {
+            "node": "SEND REVISION QUEUED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

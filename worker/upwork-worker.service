@@ -1,0 +1,16 @@
+[Unit]
+Description=Upwork AI assistant worker (Claude Code)
+After=network-online.target
+
+[Service]
+# Run as a dedicated unprivileged user: the worker executes an AI coding agent on client-provided tasks
+User=upwork
+WorkingDirectory=/home/upwork/upwork-worker
+ExecStart=/usr/bin/node worker.js
+Restart=always
+RestartSec=15
+Environment=PATH=/home/upwork/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/upwork
+
+[Install]
+WantedBy=multi-user.target

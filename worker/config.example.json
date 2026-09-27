@@ -1,0 +1,8 @@
+{
+  "n8nUrl": "https://your-n8n.example.com",
+  "key": "YOUR_WORKER_KEY",
+  "projectsDir": "/home/upwork/upwork-projects",
+  "claudePath": "/home/upwork/.local/bin/claude",
+  "pollSeconds": 30,
+  "timeoutMinutes": 60
+}

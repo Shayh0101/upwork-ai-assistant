@@ -1,0 +1,470 @@
+{
+  "name": "UPWORK-03 WORKER API",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "upwork-next",
+        "responseMode": "responseNode",
+        "options": {
+          "onlyRunIf": "={{ $json.query.key === 'YOUR_WORKER_KEY' }}"
+        }
+      },
+      "id": "e02abbdf-0e55-4150-acd9-33f95eae1f64",
+      "name": "WORKER ASKS NEXT TASK",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS upwork_tasks (\n  id SERIAL PRIMARY KEY,\n  message_id INT,\n  title TEXT,\n  prompt TEXT,\n  status TEXT DEFAULT 'queued',\n  created_at TIMESTAMPTZ DEFAULT now(),\n  started_at TIMESTAMPTZ,\n  finished_at TIMESTAMPTZ,\n  summary_ru TEXT,\n  tests TEXT,\n  folder TEXT\n);\nALTER TABLE upwork_tasks ADD COLUMN IF NOT EXISTS revision_of INT;\nALTER TABLE upwork_tasks ADD COLUMN IF NOT EXISTS review_score INT;",
+        "options": {}
+      },
+      "id": "9eb66def-a624-4c4c-8abc-c802b6335879",
+      "name": "ENSURE TASKS TABLE",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        -80
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_tasks t SET status = 'running', started_at = now()\nWHERE t.id = (SELECT id FROM upwork_tasks WHERE status = 'queued' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)\nRETURNING t.id, t.title, t.prompt, t.revision_of,\n  (SELECT p.folder FROM upwork_tasks p WHERE p.id = t.revision_of) AS parent_folder;",
+        "options": {}
+      },
+      "id": "0acbef65-ba1e-459f-9944-9dc4cf2ba91f",
+      "name": "CLAIM NEXT TASK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        -80
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.id ? { id: $json.id, title: $json.title, prompt: $json.prompt, revision_of: $json.revision_of, parent_folder: $json.parent_folder } : { id: null }) }}",
+        "options": {}
+      },
+      "id": "c528531f-dd2a-45d6-892a-679bda94ca1c",
+      "name": "GIVE TASK TO WORKER",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5fee6a9c-94da-4e81-970a-8210739fd471",
+      "name": "TASK CLAIMED?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=⚙️ Claude начал работу: {{ $json.title }}\nЗадача #{{ $json.id }}. Обычно 5–30 минут — пришлю, когда закончу.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "67a753ca-dc56-4fd6-a885-47a7665fb301",
+      "name": "NOTIFY STARTED",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upwork-done",
+        "options": {
+          "binaryPropertyName": "file",
+          "onlyRunIf": "={{ $json.query.key === 'YOUR_WORKER_KEY' }}"
+        }
+      },
+      "id": "530e4e83-ba32-44d4-b601-674133b70337",
+      "name": "WORKER SENDS RESULT",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Сообщение «работа окончена» для Telegram (HTML)\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst b = $json.body || {};\nlet tests = [];\ntry { tests = JSON.parse(b.tests || '[]'); } catch (e) { tests = []; }\nif (!Array.isArray(tests)) tests = [];\nconst passed = tests.filter((t) => t && t.passed).length;\nconst ok = b.status === 'done';\nconst score = Number(b.review_score);\nconst kind = b.is_revision ? 'Доработка' : 'Работа';\nconst lines = [\n  ok ? '✅ <b>' + kind + ' окончена</b> — задача #' + esc(b.id) : '❌ <b>Не получилось</b> — задача #' + esc(b.id),\n  b.title ? '<b>' + esc(b.title) + '</b>' : '',\n  b.summary_ru ? '📝 ' + esc(b.summary_ru) : '',\n  tests.length ? '🧪 <b>Тесты: ' + passed + '/' + tests.length + '</b>\\n' + tests.map((t) => (t.passed ? '✅ ' : '❌ ') + esc(t.name)).join('\\n') : '🧪 Тесты не найдены',\n  Number.isFinite(score) && b.review_score !== '' ? '🔍 <b>Проверка вторым ИИ: ' + score + '/10</b> ' + (score >= 8 ? '🟢' : score >= 6 ? '🟡' : '🔴') + (b.review_ru ? '\\n' + esc(b.review_ru) : '') : '',\n  b.how_to_run_ru ? '▶️ <b>Как запустить:</b>\\n' + esc(b.how_to_run_ru) : '',\n  b.needs_ru ? '🔑 <b>Нужно от клиента:</b> ' + esc(b.needs_ru) : '',\n  b.error ? '⚠️ ' + esc(String(b.error).slice(0, 800)) : '',\n  ok ? '👉 Проверьте проект. Если всё хорошо — отправьте архив клиенту в чате Upwork. Нужны правки — кнопка 🔁 ниже.' : '🔁 Можно нажать «Доработать» и написать, что исправить.',\n];\nconst hasZip = !!($input.item.binary && Object.keys($input.item.binary).length);\nreturn { json: { id: Number(b.id) || null, status: ok ? 'done' : 'failed', summary_ru: b.summary_ru || b.error || '', tests: JSON.stringify(tests), folder: b.folder || '', review_score: Number.isFinite(score) && b.review_score !== '' ? score : null, text: lines.filter(Boolean).join('\\n\\n').slice(0, 4000), has_zip: hasZip, zip_field: hasZip ? Object.keys($input.item.binary)[0] : '' }, binary: $input.item.binary };"
+      },
+      "id": "31728810-959c-441c-b003-4e5928502a02",
+      "name": "FORMAT RESULT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔁 Доработать",
+                    "additionalFields": {
+                      "callback_data": "=revise:{{ $json.id }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2040a2ce-ef4c-4b7a-be8f-cc2a91e96602",
+      "name": "SEND RESULT",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        144
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE upwork_tasks SET status = r.status, finished_at = now(), summary_ru = r.summary_ru, tests = r.tests, folder = r.folder, review_score = r.review_score\nFROM json_to_record($1::json) AS r(id int, status text, summary_ru text, tests text, folder text, review_score int)\nWHERE upwork_tasks.id = r.id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ id: $('FORMAT RESULT').item.json.id, status: $('FORMAT RESULT').item.json.status, summary_ru: $('FORMAT RESULT').item.json.summary_ru, tests: $('FORMAT RESULT').item.json.tests, folder: $('FORMAT RESULT').item.json.folder, review_score: $('FORMAT RESULT').item.json.review_score })] }}"
+        }
+      },
+      "id": "007f0239-db29-449f-8918-623c641fd7b9",
+      "name": "SAVE RESULT",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        144
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_zip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d093b047-6919-4459-999d-a6941e879ada",
+      "name": "HAS ZIP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "binaryData": true,
+        "binaryPropertyName": "={{ $json.zip_field }}",
+        "additionalFields": {
+          "caption": "=📦 Проект, задача #{{ $json.id }}"
+        }
+      },
+      "id": "4bde3404-80ba-4647-9edd-95a837603731",
+      "name": "SEND ZIP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        336
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Report Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## UPWORK-03 WORKER API\nСвязь с помощником на компьютере (upwork-worker).\n• GET /webhook/upwork-next?key=… — отдаёт следующую задачу из очереди и пишет в Telegram «Claude начал работу».\n• POST /webhook/upwork-done?key=… — принимает результат (текст, тесты, zip) и присылает «✅ Работа окончена».\nКлюч — в options.onlyRunIf обоих вебхуков и в config.json помощника.",
+        "height": 600,
+        "width": 300,
+        "color": 4
+      },
+      "id": "85fafeb2-269c-4c86-96b7-91cad70b57d0",
+      "name": "Sticky Note fcd3a667",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upwork-enqueue",
+        "responseMode": "lastNode",
+        "options": {
+          "onlyRunIf": "={{ $json.query.key === 'YOUR_WORKER_KEY' }}"
+        }
+      },
+      "id": "fca79a24-ae03-4bfe-80be-b133c5f030a8",
+      "name": "ADD TASK DIRECTLY",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO upwork_tasks (title, prompt)\nSELECT r.title, r.prompt FROM json_to_record($1::json) AS r(title text, prompt text)\nRETURNING id, title;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ title: $json.body.title, prompt: $json.body.prompt })] }}"
+        }
+      },
+      "id": "b45c35b0-0a28-4901-92a7-5dd65df4d821",
+      "name": "INSERT TASK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        560
+      ],
+      "credentials": {
+        "postgres": {
+          "name": "Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WORKER ASKS NEXT TASK": {
+      "main": [
+        [
+          {
+            "node": "ENSURE TASKS TABLE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ENSURE TASKS TABLE": {
+      "main": [
+        [
+          {
+            "node": "CLAIM NEXT TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CLAIM NEXT TASK": {
+      "main": [
+        [
+          {
+            "node": "GIVE TASK TO WORKER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GIVE TASK TO WORKER": {
+      "main": [
+        [
+          {
+            "node": "TASK CLAIMED?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TASK CLAIMED?": {
+      "main": [
+        [
+          {
+            "node": "NOTIFY STARTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WORKER SENDS RESULT": {
+      "main": [
+        [
+          {
+            "node": "FORMAT RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FORMAT RESULT": {
+      "main": [
+        [
+          {
+            "node": "SEND RESULT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HAS ZIP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEND RESULT": {
+      "main": [
+        [
+          {
+            "node": "SAVE RESULT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HAS ZIP?": {
+      "main": [
+        [
+          {
+            "node": "SEND ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ADD TASK DIRECTLY": {
+      "main": [
+        [
+          {
+            "node": "INSERT TASK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
